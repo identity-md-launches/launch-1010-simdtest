@@ -34,6 +34,7 @@ contract LaunchHandler is Test {
         uint256 amount = bound(raw, 10, 1000 ether);
         bool zeroForOne = buy == pairIs0;
         uint256 beforeFees = hook.accruedFees();
+        uint256 imdBefore = IERC20(hook.IMD()).balanceOf(address(this));
         router.swap(
             key,
             SwapParams(
@@ -44,7 +45,12 @@ contract LaunchHandler is Test {
             PoolSwapTest.TestSettings(false, false),
             ""
         );
-        totalFees += hook.accruedFees() - beforeFees;
+        uint256 fee = hook.accruedFees() - beforeFees;
+        uint256 expectedFee = buy
+            ? (imdBefore - IERC20(hook.IMD()).balanceOf(address(this))) * hook.antiSnipeFeeBps() / 10000
+            : 0;
+        assertEq(fee, expectedFee, "fee must use gross IMD spent in either mode");
+        totalFees += fee;
         ++successfulTrades;
     }
 

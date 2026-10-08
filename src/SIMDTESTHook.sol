@@ -128,7 +128,7 @@ contract SIMDTESTHook is IUnlockCallback, ReentrancyGuard {
     }
 
     /// @notice Fees always use IMD. LP fee override is always zero.
-    /// @dev Exact input budgets include the hook fee. Exact output adds a fee to actual IMD input.
+    /// @dev Both modes charge the rate on gross IMD spent, including the hook fee.
     /// A reverted quote handles partial fills and requests wider than v4's int128 return deltas.
     function beforeSwap(address, PoolKey calldata key, SwapParams calldata params, bytes calldata)
         external
@@ -142,7 +142,8 @@ contract SIMDTESTHook is IUnlockCallback, ReentrancyGuard {
         }
 
         bool exactInput = params.amountSpecified < 0;
-        uint256 fee = exactInput ? _exactInputFee(key, params, rate) : _quote(key, params) * rate / 10_000;
+        uint256 fee =
+            exactInput ? _exactInputFee(key, params, rate) : _quote(key, params) * rate / (10_000 - rate);
         if (!exactInput && uint256(params.amountSpecified) > uint256(type(int256).max) - fee) {
             revert UnrepresentableFee();
         }

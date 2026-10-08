@@ -82,7 +82,7 @@ abstract contract LaunchBehavior is LaunchFixture {
         uint256 cost = uint256(-int256(pairDelta(d)));
         uint256 fee = hook.accruedFees();
         assertEq(tokenDelta(d), 1000 ether);
-        assertEq(fee, (cost - fee) * 3000 / 10000);
+        assertEq(fee, cost * 3000 / 10000);
         d = swap(false, -1000 ether);
         assertEq(tokenDelta(d), -1000 ether);
         assertGt(pairDelta(d), 0);
@@ -92,6 +92,41 @@ abstract contract LaunchBehavior is LaunchFixture {
         assertLt(tokenDelta(d), 0);
         assertEq(hook.accruedFees(), fee);
         assertSettled();
+    }
+
+    function test_sameTradeChargesSameFeeInBothModes() public {
+        for (uint256 elapsed; elapsed <= 10; ++elapsed) {
+            vm.roll(startBlock + elapsed);
+            uint256 snapshot = vm.snapshotState();
+            BalanceDelta input = swap(true, -1000 ether);
+            uint256 inputFee = hook.accruedFees();
+            assertSettled();
+            assertTrue(vm.revertToState(snapshot));
+
+            BalanceDelta output = swap(true, int256(tokenDelta(input)));
+            assertEq(tokenDelta(output), tokenDelta(input), "same token output");
+            assertEq(hook.accruedFees(), inputFee, "fee must not depend on request mode");
+            assertEq(pairDelta(output), pairDelta(input), "same gross IMD spent");
+            assertSettled();
+            assertTrue(vm.revertToState(snapshot));
+            vm.deleteStateSnapshot(snapshot);
+        }
+    }
+
+    function test_partialExactOutputUsesGrossIMDAtEveryRate() public {
+        for (uint256 elapsed; elapsed <= 10; ++elapsed) {
+            vm.roll(startBlock + elapsed);
+            uint256 snapshot = vm.snapshotState();
+            uint160 tight = TickMath.getSqrtPriceAtTick(pairIs0 ? int24(-1) : int24(1));
+            BalanceDelta d = swapAt(true, int256(LIMIT), tight);
+            assertGt(tokenDelta(d), 0);
+            assertLt(uint256(uint128(tokenDelta(d))), LIMIT);
+            uint256 spent = uint256(-int256(pairDelta(d)));
+            assertEq(hook.accruedFees(), spent * (3000 - 300 * elapsed) / 10000);
+            assertSettled();
+            assertTrue(vm.revertToState(snapshot));
+            vm.deleteStateSnapshot(snapshot);
+        }
     }
 
     function expectMaxBuy() internal {
@@ -243,8 +278,7 @@ abstract contract LaunchBehavior is LaunchFixture {
         uint256 rate = blocksElapsed < 10 ? 3000 - blocksElapsed * 300 : 0;
         uint256 fee = hook.accruedFees();
         if (!buy || rate == 0) assertEq(fee, 0);
-        else if (exactInput) assertEq(fee, amount * rate / 10000);
-        else assertEq(fee, (uint256(-int256(pairDelta(d))) - fee) * rate / 10000);
+        else assertEq(fee, (imdBefore - IERC20(IMD).balanceOf(address(this))) * rate / 10000);
         assertSettled();
     }
 }

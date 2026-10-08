@@ -1,20 +1,15 @@
 {
   "kind": "univ4_hook",
-  "chainId": 1,
   "hook": {
     "contract": "SIMDTESTHook",
-    "source": "src/SIMDTESTHook.sol",
     "constructorArgs": ["$poolManager", "$token"],
     "permissions": ["beforeInitialize", "beforeSwap", "afterSwap", "beforeSwapReturnDelta"]
   },
   "token": {
     "contract": "SIMDTEST",
-    "source": "src/SIMDTEST.sol",
-    "constructorArgs": [],
     "name": "SIMDTEST",
     "symbol": "SIMDTEST",
-    "decimals": 18,
-    "totalSupply": "1000000000000000000000000000"
+    "decimals": 18
   },
   "pool": {
     "pairedCurrency": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",

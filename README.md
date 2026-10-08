@@ -15,15 +15,14 @@ python3 script/check_manifest.py
 
 The unit/integration suite deploys the actual vendored v4 PoolManager and uses its swap and liquidity routers. It exercises both currency orderings, exact-input/output buys and sells, every fee-decay block, exact limit boundaries, partial fills, large requests, sweep reentrancy, permission bits, forbidden runtime opcodes, and initialization restrictions. Five fuzz tests run 1,000 cases each. A stateful invariant performs 128 sequences of 64 actions and checks token conservation, fee claims plus treasury receipts, and zero outstanding PoolManager deltas.
 
-Fork tests explicitly skip when no fork is active, without reading environment variables. They use real IMD bytecode and the real mainnet PoolManager. The following run passed all three fork tests at block **26145829**:
+Fork tests explicitly skip when no fork is active, without reading environment variables. They use real IMD bytecode and the real mainnet PoolManager. Run the three tests in this revision's `MainnetForkTest` against current mainnet state:
 
 ```sh
-forge test --match-contract MainnetForkTest \
-  --fork-url https://ethereum-rpc.publicnode.com \
-  --fork-block-number 26145829 -vv
+forge test --match-contract '^MainnetForkTest$' \
+  --fork-url https://ethereum-rpc.publicnode.com -vv
 ```
 
-An archive-capable mainnet endpoint may be substituted on the command line. Test funding uses Foundry's ERC-20 `deal` to give the test trader IMD; the tests do not replace IMD's code, replace the live PoolManager, fund real accounts, or broadcast transactions. They verify real-token settlement, treasury payout, both trade modes in both directions, decay, and max-buy enforcement. Default offline tests use an explicit IMD stand-in at the specified pair address.
+The public endpoint could not serve historical state at the previously documented block 26145829. For a reproducible historical run, substitute an archive-capable mainnet endpoint and add `--fork-block-number` with a block that endpoint retains. Test funding uses Foundry's ERC-20 `deal` to give the test trader IMD; the tests do not replace IMD's code, replace the live PoolManager, fund real accounts, or broadcast transactions. They verify real-token settlement, treasury payout, both trade modes in both directions, decay, and max-buy enforcement. Default offline tests use an explicit IMD stand-in at the specified pair address.
 
 ## Token and pool
 
@@ -53,10 +52,10 @@ For elapsed blocks `e = block.number - openedBlock`, the buy fee is `(10-e)*300`
 Fees use IMD only and are charged through `beforeSwap` return deltas:
 
 - **Exact input:** the specified IMD budget includes the hook fee. A full fill charges `floor(budget * rate / 10000)` and sends the remainder through the pool.
-- **Exact output:** the actual pool IMD input includes the LP fee. The hook adds `floor(poolInput * rate / 10000)` IMD to that input, preserving the specified token output.
+- **Exact output:** the actual pool IMD input includes the LP fee. The hook adds `floor(poolInput * rate / (10000-rate))` IMD to that input, preserving the specified token output. This also covers partial exact-output fills.
 - **Partial exact input:** the hook charges `floor(actualPoolInput * rate / (10000-rate))`, so unused budget is not taxed. Integer rounding always floors; tiny fees can be zero.
 
-The exact-input budget and exact-output pool-input bases differ intentionally: exact input supplies a total spending budget, while exact output supplies desired token output. Routers must include the applicable fee in their quotes and user slippage checks.
+Both modes charge the same rate on **gross IMD spent**, including the hook fee. For example, at opening, 700 IMD of pool input accrues 300 IMD of hook fees for 1,000 IMD total spent in either mode. Integer rounding and pool rounding can produce single-wei differences between equivalent requests. Routers must include the fee in their quotes and user slippage checks.
 
 To determine an exact-output fee **before** the real swap, `beforeSwap` makes a self-only quote call. That call invokes the same pool swap with the same price limit, then unconditionally reverts with its IMD delta. Core skips recursive callbacks when the hook itself calls `swap`. All quoted changes, including events, protocol fees and transient deltas, roll back. The real swap subsequently executes once. Exact-input quotes also protect partial fills and avoid narrowing enormous specified requests into `int128`. No fee is exchanged for another currency, and no persistent quote swap or price oracle is used. This costs an extra simulated pool traversal during the ten-block fee window. Expired-fee swaps and sells do not quote.
 

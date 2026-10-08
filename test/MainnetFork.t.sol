@@ -13,7 +13,7 @@ import {
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {CustomRevert} from "v4-core/src/libraries/CustomRevert.sol";
 
-/// @notice Run with --fork-url and --fork-block-number. No environment reads; explicitly skipped offline.
+/// @notice Run with --fork-url (optional archive block pin). No environment reads; skipped offline.
 contract MainnetForkTest is LaunchFixture {
     function setUp() public override {
         try vm.activeFork() returns (uint256) {}
@@ -39,7 +39,7 @@ contract MainnetForkTest is LaunchFixture {
         BalanceDelta d = swap(true, 1000 ether);
         assertEq(tokenDelta(d), 1000 ether);
         uint256 outputFee = hook.accruedFees() - 300 ether;
-        assertEq(outputFee, (uint256(-int256(pairDelta(d))) - outputFee) * 3000 / 10000);
+        assertEq(outputFee, uint256(-int256(pairDelta(d))) * 3000 / 10000);
         uint256 fees = hook.accruedFees();
         swap(false, -1000 ether);
         swap(false, 1000 ether);
