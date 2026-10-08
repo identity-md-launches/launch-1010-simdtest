@@ -1,0 +1,26 @@
+{
+  "kind": "univ4_hook",
+  "chainId": 1,
+  "hook": {
+    "contract": "SIMDTESTHook",
+    "source": "src/SIMDTESTHook.sol",
+    "constructorArgs": ["$poolManager", "$token"],
+    "permissions": ["beforeInitialize", "beforeSwap", "afterSwap", "beforeSwapReturnDelta"]
+  },
+  "token": {
+    "contract": "SIMDTEST",
+    "source": "src/SIMDTEST.sol",
+    "constructorArgs": [],
+    "name": "SIMDTEST",
+    "symbol": "SIMDTEST",
+    "decimals": 18,
+    "totalSupply": "1000000000000000000000000000"
+  },
+  "pool": {
+    "pairedCurrency": "0xd34a99bc0f67ae1bbd63c660e6d0b0dd03e263b7",
+    "fee": 12500,
+    "tickSpacing": 60,
+    "initialPrice": "79228162514264337593543950336"
+  },
+  "notes": "Ethereum mainnet only. Resolve $poolManager to 0x000000000004444c5dc75cB358380D2e3dE08A90 and $token to the freshly deployed SIMDTEST token. Deploy SIMDTESTHook itself directly with CREATE2 permission bits 0x20c8, then initialize atomically. Token mints all 1e27 units to its deployer. The launch factory seeds 90%, distributes the swarm 10% through its Merkle distributor, and handles remainderTo. initialPrice is provenance only; factory economics choose the opening price. Immutable buy-only IMD fee decays over 10 blocks; per-swap maximum delivered tokens is 1e25 until 3600 seconds. IMD fee claims accrue in the hook and anyone may sweep to 0x3dd5f73dd1a4e62630fad3909673f130ad429985. No owner, setters, proxy or upgradeability. See README.md for fee rounding, partial fills, deployment and fork verification."
+}
