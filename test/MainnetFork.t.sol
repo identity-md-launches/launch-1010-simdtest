@@ -12,9 +12,13 @@ import {
 } from "./helpers/LaunchFixture.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {CustomRevert} from "v4-core/src/libraries/CustomRevert.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 
 /// @notice Run with --fork-url (optional archive block pin). No environment reads; skipped offline.
 contract MainnetForkTest is LaunchFixture {
+    using StateLibrary for IPoolManager;
+
     function setUp() public override {
         try vm.activeFork() returns (uint256) {}
         catch {
@@ -82,5 +86,81 @@ contract MainnetForkTest is LaunchFixture {
             assertEq(hook.accruedFees() - old, 1000 ether * (3000 - 300 * i) / 10000);
         }
         assertSettled();
+    }
+
+    function testFork_partialFillTaxesConsumedIMDAndSweepsMixedFunds() public {
+        uint160 tight = TickMath.getSqrtPriceAtTick(pairIs0 ? int24(-1) : int24(1));
+        uint256 treasuryBefore = IERC20(IMD).balanceOf(hook.SWEEP_TREASURY());
+        uint256 traderBefore = IERC20(IMD).balanceOf(address(this));
+        // Requested output is above the limit; actual delivery below it must succeed.
+        BalanceDelta delta = swapAt(true, int256(LIMIT + 1), tight);
+        uint256 spent = traderBefore - IERC20(IMD).balanceOf(address(this));
+        assertGt(tokenDelta(delta), 0);
+        assertLt(uint256(uint128(tokenDelta(delta))), LIMIT);
+        assertEq(uint256(-int256(pairDelta(delta))), spent);
+        uint256 fees = hook.accruedFees();
+        assertEq(fees, spent * 3000 / 10_000);
+        assertGt(fees, 0);
+        assertEq(IERC20(IMD).balanceOf(address(hook)), 0, "fees must be manager claims");
+        (uint160 price,,, uint24 lpFee) = manager.getSlot0(key.toId());
+        assertEq(price, tight);
+        assertEq(lpFee, 12500);
+        IERC20(IMD).transfer(address(hook), 7 ether);
+        address keeper = makeAddr("fork sweep keeper");
+        uint256 keeperBefore = IERC20(IMD).balanceOf(keeper);
+        vm.prank(keeper);
+        hook.sweep();
+        assertEq(IERC20(IMD).balanceOf(keeper), keeperBefore);
+        assertEq(IERC20(IMD).balanceOf(hook.SWEEP_TREASURY()) - treasuryBefore, fees + 7 ether);
+        assertEq(IERC20(IMD).balanceOf(address(hook)), 0);
+        assertEq(hook.accruedFees(), 0);
+        hook.sweep();
+        assertEq(IERC20(IMD).balanceOf(hook.SWEEP_TREASURY()) - treasuryBefore, fees + 7 ether);
+        assertSettled();
+    }
+
+    function testFork_rejectedBuyPreservesRealBalancesAndPool() public {
+        swap(true, -1000 ether);
+        bytes32 beforeState = forkAccountingState();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(hook),
+                IHooks.afterSwap.selector,
+                abi.encodeWithSelector(SIMDTESTHook.MaxBuyExceeded.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        swap(true, -30_000_000 ether);
+        assertEq(forkAccountingState(), beforeState);
+        assertSettled();
+        assertEq(tokenDelta(swap(true, int256(LIMIT))), int256(LIMIT));
+        assertSettled();
+    }
+
+    function forkAccountingState() internal view returns (bytes32) {
+        (uint160 price, int24 tick, uint24 protocolFee, uint24 lpFee) = manager.getSlot0(key.toId());
+        (uint256 growth0, uint256 growth1) = manager.getFeeGrowthGlobals(key.toId());
+        return keccak256(
+            abi.encode(
+                price,
+                tick,
+                protocolFee,
+                lpFee,
+                growth0,
+                growth1,
+                hook.accruedFees(),
+                IERC20(IMD).balanceOf(address(this)),
+                IERC20(IMD).balanceOf(address(manager)),
+                token.balanceOf(address(this)),
+                token.balanceOf(address(manager))
+            )
+        );
+    }
+}
+
+contract MainnetForkCurrency1Test is MainnetForkTest {
+    function tokenBelowPair() internal pure override returns (bool) {
+        return false;
     }
 }
